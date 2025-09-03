@@ -1,0 +1,29 @@
+interface={{.Interface}}
+bind-interfaces
+dhcp-range={{.DHCPRange}},12h
+dhcp-option=option:router,{{.Gateway}}
+dhcp-option=option:dns-server,{{.Gateway}}
+dhcp-option=114,"http://{{.Gateway}}/hotspot-detect.html"
+
+# Captive portal - redirect ALL domains to our server
+address=/#/{{.Gateway}}
+
+# Specific captive portal detection URLs
+address=/captive.apple.com/{{.Gateway}}
+address=/hotspot-detect.html/{{.Gateway}}
+address=/generate_204/{{.Gateway}}
+address=/connecttest.txt/{{.Gateway}}
+address=/msftconnecttest.com/{{.Gateway}}
+address=/www.msftconnecttest.com/{{.Gateway}}
+
+# Local domain
+address=/{{.Name}}.local/{{.Gateway}}
+address=/setup.{{.Name}}.local/{{.Gateway}}
+
+# DNS settings
+cache-size=150
+neg-ttl=60
+no-hosts
+no-resolv
+server=8.8.8.8
+server=8.8.4.4
