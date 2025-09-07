@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"text/template"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -15,7 +16,7 @@ import (
 var (
 	DefaultCountryCode       = "US"
 	ErrInvalidAPConfig       = errors.New("invalid wireless wireless access point")
-	ErrServiceAlreadyRunning = errors.New("hostapd service is already running")
+	ErrServiceAlreadyRunning = errors.New("hotspot service is already running")
 )
 
 //go:embed templates/*.tmpl
@@ -70,15 +71,17 @@ type HostAPDService interface {
 }
 
 type hostAPDService struct {
-	config     APConfig
-	configPath string
-	running    bool
-	logger     *slog.Logger
+	config          APConfig
+	dnsmasqConfigPath string
+	dnsmasqCmd      *exec.Cmd
+	hotspotName     string
+	running         bool
+	logger          *slog.Logger
 }
 
 func NewHostAPDService() HostAPDService {
 	return &hostAPDService{
-		logger:  slog.Default().WithGroup("hostapd_service"),
+		logger:  slog.Default().WithGroup("nm_hotspot_service"),
 		running: false,
 	}
 }
@@ -91,21 +94,19 @@ func (h *hostAPDService) Start(ctx context.Context, config APConfig) error {
 		return errors.Wrap(err, "invalid access point configuration")
 	}
 	h.config = config
+	h.hotspotName = fmt.Sprintf("hotspot-%s", config.Name)
 
 	if err := h.prepareInterface(); err != nil {
 		return errors.Wrap(err, "failed to prepare interface")
 	}
-	if err := h.generateHostapdConfig(); err != nil {
-		return errors.Wrap(err, "failed to generate hostapd config")
+	if err := h.createHotspot(); err != nil {
+		return errors.Wrap(err, "failed to create NetworkManager hotspot")
 	}
 	if err := h.configureNetwork(); err != nil {
 		return errors.Wrap(err, "failed to configure network")
 	}
 	if err := h.startDNSMasq(); err != nil {
 		return errors.Wrap(err, "failed to start dnsmasq")
-	}
-	if err := h.startHostapd(); err != nil {
-		return errors.Wrap(err, "failed to start hostapd")
 	}
 
 	h.running = true
@@ -117,9 +118,8 @@ func (h *hostAPDService) Stop(ctx context.Context) error {
 		return nil
 	}
 
-	h.stopHostapd()
-
 	h.stopDNSMasq()
+	h.stopHotspot()
 
 	h.running = false
 	return nil
@@ -130,69 +130,80 @@ func (h *hostAPDService) IsRunning() bool {
 }
 
 func (h *hostAPDService) prepareInterface() error {
-	h.logger.Debug("preparing hostapd interface")
+	h.logger.Debug("preparing interface for NetworkManager hotspot")
 
-	h.logger.Debug("stopping dnsmasq service")
-
-	err := exec.Command("systemctl", "stop", "dnsmasq").Run()
-	if err != nil {
-		return err
+	// Stop any existing dnsmasq service
+	h.logger.Debug("stopping system dnsmasq service")
+	if err := exec.Command("systemctl", "stop", "dnsmasq").Run(); err != nil {
+		h.logger.Warn("failed to stop system dnsmasq service", slog.String("error", err.Error()))
 	}
 
-	h.logger.Debug("setting interface to non managed mode")
-	if err := exec.Command("nmcli", "device", "set", h.config.Interface, "managed", "no").Run(); err != nil {
-		return errors.Wrap(err, "failed disable interface managed mode")
-	}
-
-	h.logger.Debug("resetting interface")
-	// Use NetworkManager to disconnect the device (brings it down)
-	/*if out, err := exec.Command("nmcli", "device", "disconnect", h.config.Interface).CombinedOutput(); err != nil {
-		return errors.Wrap(err, "failed to bring interface down: "+string(out))
-	}*/
-
-	if o, err := exec.Command("ip", "addr", "flush", "dev", h.config.Interface).CombinedOutput(); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to flush interface addresses: %s", string(o)))
-	}
-	/*if o, err := exec.Command("iw", "dev", h.config.Interface, "set", "type", "managed").CombinedOutput(); err != nil {
-		return errors.Wrap(err, fmt.Sprintf("failed to set interface to managed mode: %s", string(o)))
-	}*/
+	// Ensure the interface is managed by NetworkManager
+	h.logger.Debug("ensuring interface is managed by NetworkManager")
 	if err := exec.Command("nmcli", "device", "set", h.config.Interface, "managed", "yes").Run(); err != nil {
-		return errors.Wrap(err, "failed to enable interface managed mode")
+		return errors.Wrap(err, "failed to set interface to managed mode")
 	}
 
-	/*if err := exec.Command("ip", "link", "set", h.config.Interface, "up").Run(); err != nil {
-		return errors.Wrap(err, "failed to bring interface up")
-	}*/
-	/*if err := h.setRegulatoryDomain(); err != nil {
-		return errors.Wrap(err, "failed to set regulatory domain")
-	}*/
-	/*h.logger.Debug("setting interface to AP mode")
-	if err := exec.Command("iw", "dev", h.config.Interface, "set", "type", "__ap").Run(); err != nil {
-		return errors.Wrap(err, "failed to set interface type to AP")
+	// Disconnect any existing connections on the interface
+	h.logger.Debug("disconnecting existing connections")
+	if err := exec.Command("nmcli", "device", "disconnect", h.config.Interface).Run(); err != nil {
+		h.logger.Warn("failed to disconnect interface", slog.String("error", err.Error()))
 	}
-	h.logger.Debug("bringing interface up")
-	if err := exec.Command("ip", "link", "set", h.config.Interface, "up").Run(); err != nil {
-		return errors.Wrap(err, "failed to bring interface up")
-	}*/
+
 	return h.verifyInterfaceStatus(h.config.Interface)
 }
 
-// setRegulatoryDomain sets the wireless regulatory domain
-func (h *hostAPDService) setRegulatoryDomain() error {
-	countryCode := h.config.CountryCode
-	if countryCode == "" {
-		countryCode = DefaultCountryCode
+// createHotspot creates a WiFi hotspot using NetworkManager
+func (h *hostAPDService) createHotspot() error {
+	h.logger.Info("creating NetworkManager hotspot",
+		slog.String("interface", h.config.Interface),
+		slog.String("ssid", h.config.SSID),
+		slog.String("hotspot_name", h.hotspotName))
+
+	// Create hotspot connection using nmcli
+	args := []string{
+		"connection", "add",
+		"type", "wifi",
+		"ifname", h.config.Interface,
+		"con-name", h.hotspotName,
+		"autoconnect", "yes",
+		"wifi.mode", "ap",
+		"wifi.ssid", h.config.SSID,
+		"wifi.channel", fmt.Sprintf("%d", h.config.Channel),
+		"ipv4.method", "manual",
+		"ipv4.addresses", fmt.Sprintf("%s/24", h.config.Gateway),
 	}
-	h.logger.Debug("setting regulatory domain", slog.String("country_code", countryCode))
-	if err := exec.Command("iw", "reg", "set", countryCode).Run(); err != nil {
-		return fmt.Errorf("failed to set regulatory domain to %s: %w", countryCode, err)
+
+	// Add security settings if password is provided
+	if h.config.Password != "" {
+		args = append(args,
+			"wifi-sec.key-mgmt", "wpa-psk",
+			"wifi-sec.psk", h.config.Password,
+		)
 	}
+
+	cmd := exec.Command("nmcli", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create hotspot connection: %s, %w", string(output), err)
+	}
+
+	// Wait a moment for the connection to be created
+	time.Sleep(2 * time.Second)
+
+	// Activate the hotspot connection
+	h.logger.Debug("activating hotspot connection")
+	cmd = exec.Command("nmcli", "connection", "up", h.hotspotName)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to activate hotspot: %s, %w", string(output), err)
+	}
+
+	h.logger.Info("NetworkManager hotspot created and activated successfully")
 	return nil
 }
 
 // verifyInterfaceStatus verifies the interface is properly configured
 func (h *hostAPDService) verifyInterfaceStatus(iFace string) error {
-	checkCmd := exec.Command("ip", "link", "show", iFace)
+	checkCmd := exec.Command("nmcli", "device", "show", iFace)
 	output, err := checkCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to verify interface status: %w", err)
@@ -201,117 +212,108 @@ func (h *hostAPDService) verifyInterfaceStatus(iFace string) error {
 	return nil
 }
 
-func (h *hostAPDService) generateHostapdConfig() error {
-	h.logger.Info("generating hostapd config with values",
-		slog.String("interface", h.config.Interface),
-		slog.String("ssid", h.config.SSID),
-		slog.String("password", h.config.Password),
-		slog.Int("channel", h.config.Channel))
-
-	templateContent, err := templateFiles.ReadFile("templates/hostapd.conf.tmpl")
-	if err != nil {
-		return errors.Wrap(err, "failed to read hostapd template file")
-	}
-	tmpl, err := template.New("hostapd").Parse(string(templateContent))
-	if err != nil {
-		return errors.Wrap(err, "failed to parse hostapd template")
-	}
-
-	// Verify template was parsed successfully
-	h.logger.Debug("template parsed successfully")
-
-	file, err := os.CreateTemp("", "hostapd-*.conf")
-	if err != nil {
-		return errors.Wrap(err, "failed to create hostapd config file")
-	}
-	defer file.Close()
-
-	h.logger.Info("temp file created", slog.String("path", file.Name()))
-
-	if err := tmpl.Execute(file, h.config); err != nil {
-		return errors.Wrap(err, "failed to execute hostapd template")
-	}
-	h.configPath = file.Name()
-	h.logger.Debug("generated hostapd config", slog.String("path", h.configPath))
-	return nil
-
-}
-
 func (h *hostAPDService) configureNetwork() error {
-	if err := exec.Command("ip", "addr", "add", fmt.Sprintf("%s/24", h.config.Gateway), "dev", h.config.Interface).Run(); err != nil {
-		return errors.Wrap(err, "failed to configure network")
-	}
+	h.logger.Debug("configuring network firewall rules")
+	
+	// Apply UFW firewall rules
 	rules := GetRequiredFirewallRules(h.config.Interface)
 	for _, rule := range rules {
 		if err := rule.Apply(h.config.Interface); err != nil {
-			return errors.Wrap(err, "failed to apply firewall rule")
+			h.logger.Warn("failed to apply firewall rule", slog.String("error", err.Error()))
 		}
 	}
+	
+	// Apply IPTables rules for captive portal
 	ipTablesRules := CreateIPTablesRules(h.config.Interface, h.config.Gateway)
 	for _, rule := range ipTablesRules {
 		if err := rule.Apply(); err != nil {
-			return errors.Wrap(err, "failed to apply iptables rule")
+			h.logger.Warn("failed to apply iptables rule", slog.String("error", err.Error()))
 		}
 	}
+	
 	return nil
 }
 
 func (h *hostAPDService) startDNSMasq() error {
-	tmpl, err := template.New("dnsmasq").ParseFS(templateFiles, "templates/dnsmasq_config.tmpl")
+	h.logger.Debug("starting DNSMasq with captive portal configuration")
+	
+	tmpl, err := template.New("dnsmasq").ParseFS(templateFiles, "templates/dnsmasq.conf.tmpl")
 	if err != nil {
-		return errors.Wrap(err, "failed to parse hostapd template")
+		return errors.Wrap(err, "failed to parse dnsmasq template")
 	}
+	
 	file, err := os.CreateTemp("", "dnsmasq-*.conf")
 	if err != nil {
-		return errors.Wrap(err, "failed to create hostapd config file")
+		return errors.Wrap(err, "failed to create dnsmasq config file")
 	}
 	defer file.Close()
+	
 	if err := tmpl.Execute(file, h.config); err != nil {
-		return errors.Wrap(err, "failed to execute hostapd template")
+		return errors.Wrap(err, "failed to execute dnsmasq template")
 	}
-
-	cmd := exec.Command("dnsmasq", "-C", file.Name(), "-d")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to start dnsmasq: %s, %w", string(output), err)
+	
+	h.dnsmasqConfigPath = file.Name()
+	h.logger.Debug("generated dnsmasq config", slog.String("path", h.dnsmasqConfigPath))
+	
+	// Start dnsmasq in background
+	h.dnsmasqCmd = exec.Command("dnsmasq", "-C", h.dnsmasqConfigPath, "--keep-in-foreground")
+	if err := h.dnsmasqCmd.Start(); err != nil {
+		return fmt.Errorf("failed to start dnsmasq: %w", err)
 	}
-	h.logger.Debug("started dnsmasq service")
+	
+	// Give dnsmasq a moment to start
+	time.Sleep(1 * time.Second)
+	
+	h.logger.Info("DNSMasq started successfully with captive portal")
 	return nil
 }
 
-func (h *hostAPDService) startHostapd() error {
-	h.logger.Debug("starting hostapd service")
-	cmd := exec.Command("hostapd", h.configPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to start hostapd: %s, %w", string(output), err)
-	}
-	h.logger.Debug("started hostapd service")
-	return nil
-}
-
-func (h *hostAPDService) stopHostapd() {
-	pattern := "hostapd.*" + h.configPath
-	h.logger.Debug("stopping hostapd service")
-	if err := exec.Command("pkill", "-f", pattern).Run(); err != nil {
-		h.logger.Error("failed to stop hostapd", slog.String("pattern", pattern), slog.String("error", err.Error()))
+func (h *hostAPDService) stopHotspot() {
+	h.logger.Debug("stopping NetworkManager hotspot")
+	
+	// Disconnect the hotspot connection
+	if err := exec.Command("nmcli", "connection", "down", h.hotspotName).Run(); err != nil {
+		h.logger.Error("failed to disconnect hotspot", slog.String("name", h.hotspotName), slog.String("error", err.Error()))
 	} else {
-		h.logger.Debug("stopped hostapd service")
+		h.logger.Debug("hotspot disconnected")
 	}
-	// Cleanup config file
-	if err := os.Remove(h.configPath); err != nil {
-		h.logger.Error("failed to remove hostapd config file", slog.String("path", h.configPath), slog.String("error", err.Error()))
+	
+	// Delete the hotspot connection
+	if err := exec.Command("nmcli", "connection", "delete", h.hotspotName).Run(); err != nil {
+		h.logger.Error("failed to delete hotspot connection", slog.String("name", h.hotspotName), slog.String("error", err.Error()))
 	} else {
-		h.logger.Debug("removed hostapd config file", slog.String("path", h.configPath))
+		h.logger.Debug("hotspot connection deleted")
 	}
-	return
 }
 
 func (h *hostAPDService) stopDNSMasq() {
-	pattern := "dnsmasq.*" + h.config.Interface
 	h.logger.Debug("stopping dnsmasq service")
-	if err := exec.Command("pkill", "-f", pattern).Run(); err != nil {
-		h.logger.Error("failed to stop dnsmasq", slog.String("pattern", pattern), slog.String("error", err.Error()))
-	} else {
-		h.logger.Debug("stopped dnsmasq service")
+	
+	// Stop the dnsmasq process if we have a reference to it
+	if h.dnsmasqCmd != nil && h.dnsmasqCmd.Process != nil {
+		if err := h.dnsmasqCmd.Process.Kill(); err != nil {
+			h.logger.Error("failed to kill dnsmasq process", slog.String("error", err.Error()))
+		} else {
+			h.logger.Debug("killed dnsmasq process")
+		}
+		// Wait for process to finish
+		h.dnsmasqCmd.Wait()
+		h.dnsmasqCmd = nil
 	}
-	return
+	
+	// Also kill any remaining dnsmasq processes using our config file as backup
+	if h.dnsmasqConfigPath != "" {
+		pattern := "dnsmasq.*" + h.dnsmasqConfigPath
+		if err := exec.Command("pkill", "-f", pattern).Run(); err != nil {
+			h.logger.Debug("no additional dnsmasq processes found", slog.String("pattern", pattern))
+		}
+		
+		// Cleanup config file
+		if err := os.Remove(h.dnsmasqConfigPath); err != nil {
+			h.logger.Error("failed to remove dnsmasq config file", slog.String("path", h.dnsmasqConfigPath), slog.String("error", err.Error()))
+		} else {
+			h.logger.Debug("removed dnsmasq config file", slog.String("path", h.dnsmasqConfigPath))
+		}
+		h.dnsmasqConfigPath = ""
+	}
 }

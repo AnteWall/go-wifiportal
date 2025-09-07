@@ -57,7 +57,7 @@ func (p FireWallRule) ToArgs(iFace string) []string {
 }
 
 func (p FireWallRule) Apply(iFace string) error {
-	return exec.Command("uwf", p.ToArgs(iFace)...).Run()
+	return exec.Command("ufw", p.ToArgs(iFace)...).Run()
 }
 
 func GetRequiredFirewallRules(iFace string) []FireWallRule {

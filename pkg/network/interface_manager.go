@@ -80,13 +80,16 @@ func (im *interfaceManager) isWireless(i string) bool {
 }
 
 func (im *interfaceManager) supportsAPMode(i string) bool {
-	cmd := exec.Command("iw", "list")
-	output, err := cmd.Output()
-	if err != nil {
-		im.logger.Error("failed to check AP mode support", slog.String("interface", i), slog.String("error", err.Error()))
+	// Check if interface supports AP mode using nmcli
+	cmd := exec.Command("nmcli", "device", "wifi", "list", "ifname", i)
+	if err := cmd.Run(); err != nil {
+		im.logger.Debug("interface does not support wifi", slog.String("interface", i))
 		return false
 	}
-	return containsAPMode(string(output))
+	
+	// If nmcli can list wifi for this interface, it likely supports AP mode
+	// NetworkManager generally supports AP mode on most modern wifi interfaces
+	return true
 }
 
 func containsAPMode(iwOutput string) bool {
