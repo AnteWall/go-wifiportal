@@ -4,10 +4,10 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"os"
 	"os/exec"
+	"text/template"
 
 	"github.com/pkg/errors"
 )
@@ -57,6 +57,9 @@ func (c APConfig) Validate() error {
 	if len(c.DHCPRange) == 0 {
 		return errors.Wrap(ErrInvalidAPConfig, "DHCPRange is required")
 	}
+	if len(c.Password) == 0 {
+		return errors.Wrap(ErrInvalidAPConfig, "password is required")
+	}
 	return nil
 }
 
@@ -84,7 +87,7 @@ func (h *hostAPDService) Start(ctx context.Context, config APConfig) error {
 	if h.running {
 		return ErrServiceAlreadyRunning
 	}
-	if err := h.config.Validate(); err != nil {
+	if err := config.Validate(); err != nil {
 		return errors.Wrap(err, "invalid access point configuration")
 	}
 	h.config = config
@@ -116,6 +119,8 @@ func (h *hostAPDService) Stop(ctx context.Context) error {
 
 	h.stopHostapd()
 
+	h.stopDNSMasq()
+
 	h.running = false
 	return nil
 }
@@ -140,29 +145,35 @@ func (h *hostAPDService) prepareInterface() error {
 	}
 
 	h.logger.Debug("resetting interface")
-	if err := exec.Command("ip", "link", "set", h.config.Interface, "down").Run(); err != nil {
-		return errors.Wrap(err, "failed to bring interface down")
+	// Use NetworkManager to disconnect the device (brings it down)
+	/*if out, err := exec.Command("nmcli", "device", "disconnect", h.config.Interface).CombinedOutput(); err != nil {
+		return errors.Wrap(err, "failed to bring interface down: "+string(out))
+	}*/
+
+	if o, err := exec.Command("ip", "addr", "flush", "dev", h.config.Interface).CombinedOutput(); err != nil {
+		return errors.Wrap(err, fmt.Sprintf("failed to flush interface addresses: %s", string(o)))
 	}
-	if err := exec.Command("ip", "addr", "flush", "dev").Run(); err != nil {
-		return errors.Wrap(err, "failed to flush interface addresses")
+	/*if o, err := exec.Command("iw", "dev", h.config.Interface, "set", "type", "managed").CombinedOutput(); err != nil {
+		return errors.Wrap(err, fmt.Sprintf("failed to set interface to managed mode: %s", string(o)))
+	}*/
+	if err := exec.Command("nmcli", "device", "set", h.config.Interface, "managed", "yes").Run(); err != nil {
+		return errors.Wrap(err, "failed to enable interface managed mode")
 	}
-	if err := exec.Command("iw", "dev", h.config.Interface, "set", "type", "managed").Run(); err != nil {
-		return errors.Wrap(err, "failed to set interface type to managed")
-	}
-	if err := exec.Command("ip", "link", "set", h.config.Interface, "up").Run(); err != nil {
+
+	/*if err := exec.Command("ip", "link", "set", h.config.Interface, "up").Run(); err != nil {
 		return errors.Wrap(err, "failed to bring interface up")
-	}
-	if err := h.setRegulatoryDomain(); err != nil {
+	}*/
+	/*if err := h.setRegulatoryDomain(); err != nil {
 		return errors.Wrap(err, "failed to set regulatory domain")
-	}
-	h.logger.Debug("setting interface to AP mode")
+	}*/
+	/*h.logger.Debug("setting interface to AP mode")
 	if err := exec.Command("iw", "dev", h.config.Interface, "set", "type", "__ap").Run(); err != nil {
 		return errors.Wrap(err, "failed to set interface type to AP")
 	}
 	h.logger.Debug("bringing interface up")
 	if err := exec.Command("ip", "link", "set", h.config.Interface, "up").Run(); err != nil {
 		return errors.Wrap(err, "failed to bring interface up")
-	}
+	}*/
 	return h.verifyInterfaceStatus(h.config.Interface)
 }
 
@@ -191,15 +202,32 @@ func (h *hostAPDService) verifyInterfaceStatus(iFace string) error {
 }
 
 func (h *hostAPDService) generateHostapdConfig() error {
-	tmpl, err := template.New("hostapd").ParseFS(templateFiles, "templates/hostapd_config.tmpl")
+	h.logger.Info("generating hostapd config with values",
+		slog.String("interface", h.config.Interface),
+		slog.String("ssid", h.config.SSID),
+		slog.String("password", h.config.Password),
+		slog.Int("channel", h.config.Channel))
+
+	templateContent, err := templateFiles.ReadFile("templates/hostapd.conf.tmpl")
+	if err != nil {
+		return errors.Wrap(err, "failed to read hostapd template file")
+	}
+	tmpl, err := template.New("hostapd").Parse(string(templateContent))
 	if err != nil {
 		return errors.Wrap(err, "failed to parse hostapd template")
 	}
-	file, err := os.CreateTemp("hostapd", "hostapd.conf")
+
+	// Verify template was parsed successfully
+	h.logger.Debug("template parsed successfully")
+
+	file, err := os.CreateTemp("", "hostapd-*.conf")
 	if err != nil {
 		return errors.Wrap(err, "failed to create hostapd config file")
 	}
 	defer file.Close()
+
+	h.logger.Info("temp file created", slog.String("path", file.Name()))
+
 	if err := tmpl.Execute(file, h.config); err != nil {
 		return errors.Wrap(err, "failed to execute hostapd template")
 	}
@@ -233,7 +261,7 @@ func (h *hostAPDService) startDNSMasq() error {
 	if err != nil {
 		return errors.Wrap(err, "failed to parse hostapd template")
 	}
-	file, err := os.CreateTemp("dnsmasq", "dnsmasq.conf")
+	file, err := os.CreateTemp("", "dnsmasq-*.conf")
 	if err != nil {
 		return errors.Wrap(err, "failed to create hostapd config file")
 	}
@@ -273,6 +301,17 @@ func (h *hostAPDService) stopHostapd() {
 		h.logger.Error("failed to remove hostapd config file", slog.String("path", h.configPath), slog.String("error", err.Error()))
 	} else {
 		h.logger.Debug("removed hostapd config file", slog.String("path", h.configPath))
+	}
+	return
+}
+
+func (h *hostAPDService) stopDNSMasq() {
+	pattern := "dnsmasq.*" + h.config.Interface
+	h.logger.Debug("stopping dnsmasq service")
+	if err := exec.Command("pkill", "-f", pattern).Run(); err != nil {
+		h.logger.Error("failed to stop dnsmasq", slog.String("pattern", pattern), slog.String("error", err.Error()))
+	} else {
+		h.logger.Debug("stopped dnsmasq service")
 	}
 	return
 }

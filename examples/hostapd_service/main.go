@@ -6,14 +6,20 @@ import (
 	"time"
 
 	"github.com/AnteWall/go-wifiportal/pkg/network"
+	"github.com/pkg/errors"
 )
 
 func main() {
 
 	iFace, err := network.NewInterfaceManager().GetBestAPInterface()
 	if err != nil {
-		slog.Error(err.Error())
-		return
+		slog.Info(iFace.Name)
+		if errors.Is(err, network.ErrAllAccessPointsInUse) {
+			slog.Warn("All access points are in use, using the first available interface %s", iFace.Name)
+		} else {
+			slog.Error(err.Error())
+			return
+		}
 	}
 	slog.Info("Using interface: " + iFace.Name)
 
@@ -33,11 +39,11 @@ func main() {
 		slog.Error(err.Error())
 		return
 	}
-
+	defer func(h network.HostAPDService, ctx context.Context) {
+		err := h.Stop(ctx)
+		if err != nil {
+			slog.Error(err.Error())
+		}
+	}(h, ctx)
 	time.Sleep(10 * time.Second)
-
-	if err := h.Stop(ctx); err != nil {
-		slog.Error(err.Error())
-	}
-
 }
