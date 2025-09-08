@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connected - {{.SSID}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: #48bb78;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        .ssid {
+            color: #48bb78;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+
+        .success-message {
+            color: #2d3748;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .btn {
+            background: #48bb78;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.3s ease;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            background: #38a169;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        .info-box {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .info-box h3 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .info-label {
+            color: #718096;
+        }
+
+        .info-value {
+            color: #2d3748;
+            font-weight: 500;
+        }
+
+        .countdown {
+            margin-top: 20px;
+            color: #718096;
+            font-size: 14px;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="logo">✓</div>
+        <h1>Successfully Connected!</h1>
+        <div class="ssid">{{.SSID}}</div>
+
+        <div class="success-message">
+            <p><strong>Welcome to the internet!</strong></p>
+            <p>You are now connected and can browse freely. Your session is active and secure.</p>
+        </div>
+
+        {{if .RedirectURL}}
+        <a href="{{.RedirectURL}}" class="btn">Continue Browsing</a>
+        {{else}}
+        <button onclick="window.close()" class="btn">Close This Window</button>
+        {{end}}
+
+        <a href="/" class="btn btn-secondary">Portal Home</a>
+
+        <div class="info-box">
+            <h3>Connection Details</h3>
+            <div class="info-item">
+                <span class="info-label">Network:</span>
+                <span class="info-value">{{.SSID}}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Gateway:</span>
+                <span class="info-value">{{.Gateway}}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Status:</span>
+                <span class="info-value">Connected</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Session:</span>
+                <span class="info-value">Active</span>
+            </div>
+        </div>
+
+        <div class="countdown">
+            <p>This window will automatically redirect in <span id="countdown">10</span> seconds...</p>
+        </div>
+    </div>
+
+    <script>
+        // Auto-redirect countdown
+        let countdown = 10;
+        const countdownElement = document.getElementById('countdown');
+
+        const timer = setInterval(() => {
+            countdown--;
+            countdownElement.textContent = countdown;
+
+            if (countdown <= 0) {
+                clearInterval(timer);
+                { { if .RedirectURL} }
+                window.location.href = '{{.RedirectURL}}';
+                { {else } }
+                window.location.href = 'https://www.google.com';
+                { { end } }
+            }
+        }, 1000);
+
+        // Cancel auto-redirect if user interacts with the page
+        document.addEventListener('click', () => {
+            clearInterval(timer);
+            document.querySelector('.countdown').style.display = 'none';
+        });
+    </script>
+</body>
+
+</html>

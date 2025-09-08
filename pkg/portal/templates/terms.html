@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terms & Conditions - {{.SSID}}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            width: 60px;
+            height: 60px;
+            background: #667eea;
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .ssid {
+            color: #667eea;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .terms-content {
+            line-height: 1.6;
+            color: #444;
+        }
+
+        .terms-content h2 {
+            color: #333;
+            margin: 30px 0 15px 0;
+            font-size: 20px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .terms-content h3 {
+            color: #333;
+            margin: 20px 0 10px 0;
+            font-size: 16px;
+        }
+
+        .terms-content p {
+            margin-bottom: 15px;
+        }
+
+        .terms-content ul {
+            margin: 15px 0 15px 30px;
+        }
+
+        .terms-content li {
+            margin-bottom: 8px;
+        }
+
+        .highlight {
+            background: #fef5e7;
+            border-left: 4px solid #f6ad55;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 0 6px 6px 0;
+        }
+
+        .buttons {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background 0.3s ease;
+            margin: 10px;
+        }
+
+        .btn:hover {
+            background: #5a67d8;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+
+        .btn-secondary:hover {
+            background: #cbd5e0;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+            }
+
+            h1 {
+                font-size: 24px;
+            }
+
+            .terms-content h2 {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">📋</div>
+            <h1>Terms & Conditions</h1>
+            <div class="ssid">{{.SSID}} WiFi Network</div>
+        </div>
+
+        <div class="terms-content">
+            <div class="highlight">
+                <strong>Important:</strong> By using this WiFi network, you agree to the following terms and conditions.
+                Please read them carefully.
+            </div>
+
+            <h2>1. Acceptable Use Policy</h2>
+            <p>This WiFi network is provided for legitimate internet access. Users agree to:</p>
+            <ul>
+                <li>Use the network in compliance with all applicable laws and regulations</li>
+                <li>Not engage in any illegal activities or access illegal content</li>
+                <li>Not attempt to access unauthorized systems or networks</li>
+                <li>Not use the network for commercial purposes without permission</li>
+                <li>Respect the rights and privacy of other users</li>
+            </ul>
+
+            <h2>2. Prohibited Activities</h2>
+            <p>The following activities are strictly prohibited:</p>
+            <ul>
+                <li>Downloading or distributing copyrighted material without authorization</li>
+                <li>Hacking, cracking, or attempting to compromise network security</li>
+                <li>Sending spam, malware, or other malicious content</li>
+                <li>Excessive bandwidth usage that affects other users</li>
+                <li>Accessing adult content or inappropriate material</li>
+                <li>Any activity that violates local, state, or federal laws</li>
+            </ul>
+
+            <h2>3. Privacy and Monitoring</h2>
+            <p>Users should be aware that:</p>
+            <ul>
+                <li>Network traffic may be monitored for security and legal compliance</li>
+                <li>We may log connection times, devices, and general usage patterns</li>
+                <li>Personal information will not be shared with third parties without consent</li>
+                <li>Users are responsible for their own data security and privacy</li>
+                <li>No expectation of privacy should be assumed on this network</li>
+            </ul>
+
+            <h2>4. Network Security</h2>
+            <p>For everyone's safety and security:</p>
+            <ul>
+                <li>Users are responsible for securing their own devices</li>
+                <li>We recommend using HTTPS websites and VPNs for sensitive activities</li>
+                <li>Report any suspicious activity or security concerns immediately</li>
+                <li>Do not share network credentials with unauthorized users</li>
+            </ul>
+
+            <h2>5. Service Availability</h2>
+            <p>Please note that:</p>
+            <ul>
+                <li>Network availability is provided "as-is" without guarantees</li>
+                <li>Service may be interrupted for maintenance or technical issues</li>
+                <li>Connection speeds and quality may vary</li>
+                <li>We reserve the right to limit or terminate access at any time</li>
+            </ul>
+
+            <h2>6. Liability and Disclaimers</h2>
+            <p>By using this network:</p>
+            <ul>
+                <li>Users assume full responsibility for their online activities</li>
+                <li>The network provider is not liable for any damages or losses</li>
+                <li>Users agree to indemnify the provider against any claims</li>
+                <li>The provider makes no warranties about service quality or security</li>
+            </ul>
+
+            <h2>7. Enforcement</h2>
+            <p>Violation of these terms may result in:</p>
+            <ul>
+                <li>Immediate termination of network access</li>
+                <li>Reporting to appropriate authorities if laws are violated</li>
+                <li>Legal action for damages or policy violations</li>
+                <li>Permanent ban from the network</li>
+            </ul>
+
+            <div class="highlight">
+                <strong>Contact Information:</strong> If you have questions about these terms or need to report issues,
+                please contact the network administrator at {{.Gateway}}.
+            </div>
+
+            <p><strong>Last Updated:</strong> September 8, 2025</p>
+            <p><strong>Network:</strong> {{.SSID}} | <strong>Gateway:</strong> {{.Gateway}}</p>
+        </div>
+
+        <div class="buttons">
+            <a href="/login" class="btn">Accept & Continue to Login</a>
+            <a href="/" class="btn btn-secondary">Back to Home</a>
+        </div>
+    </div>
+</body>
+
+</html>

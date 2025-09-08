@@ -71,12 +71,17 @@ func (p FireWallRule) Apply(iFace string) error {
 	return nil
 }
 
-func GetRequiredFirewallRules(iFace string) []FireWallRule {
+func GetRequiredFirewallRules(iFace string, portalPort string) []FireWallRule {
 	return []FireWallRule{
+		// DHCP (clients send from 68/udp → server 67/udp)
 		{Direction: INCOMING, Interface: iFace, Port: "67", Protocol: UDP},
 		{Direction: OUTGOING, Interface: iFace, Port: "68", Protocol: UDP},
-		{Direction: INCOMING, Interface: iFace, Port: "80", Protocol: TCP},
+
+		// DNS (dnsmasq)
 		{Direction: INCOMING, Interface: iFace, Port: "53", Protocol: UDP},
 		{Direction: INCOMING, Interface: iFace, Port: "53", Protocol: TCP},
+
+		// Captive portal web app (redirect target)
+		{Direction: INCOMING, Interface: iFace, Port: portalPort, Protocol: TCP},
 	}
 }

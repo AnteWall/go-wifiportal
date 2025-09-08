@@ -33,6 +33,7 @@ type APConfig struct {
 	Security    string `yaml:"security" json:"security"` // "open", "wpa2" (uses AES/CCMP encryption)
 	Gateway     string `yaml:"gateway" json:"gateway"`
 	DHCPRange   string `yaml:"dhcp_range" json:"dhcpRange"`
+	PortalPort  string `yaml:"portal_port" json:"portalPort"` // Port for captive portal server (default 8080)
 }
 
 func (c APConfig) Validate() error {
@@ -44,9 +45,6 @@ func (c APConfig) Validate() error {
 	}
 	if len(c.SSID) == 0 {
 		return errors.Wrap(ErrInvalidAPConfig, "ssid is required")
-	}
-	if c.Channel < 1 || c.Channel > 14 {
-		return errors.Wrap(ErrInvalidAPConfig, "channel must be between 1 and 14")
 	}
 	if len(c.CountryCode) == 0 {
 		return errors.Wrap(ErrInvalidAPConfig, "country code is required")
@@ -107,6 +105,7 @@ func (h *hostAPDService) Start(ctx context.Context, config APConfig) error {
 	if err := h.configureNetwork(); err != nil {
 		return errors.Wrap(err, "failed to configure network")
 	}
+	// Start dnsmasq for DHCP and DNS with captive portal redirects
 	if err := h.startDNSMasq(); err != nil {
 		return errors.Wrap(err, "failed to start dnsmasq")
 	}
@@ -122,6 +121,7 @@ func (h *hostAPDService) Stop(ctx context.Context) error {
 
 	h.stopDNSMasq()
 	h.stopHotspot()
+	h.cleanupNetworkRules()
 
 	h.running = false
 	return nil
@@ -159,14 +159,14 @@ func (h *hostAPDService) prepareInterface() error {
 	return h.verifyInterfaceStatus(h.config.Interface)
 }
 
-// createHotspot creates a WiFi hotspot using NetworkManager
+// createHotspot creates a WiFi hotspot using NetworkManager with captive portal
 func (h *hostAPDService) createHotspot() error {
-	h.logger.Info("creating NetworkManager hotspot",
+	h.logger.Info("creating NetworkManager hotspot with captive portal",
 		slog.String("interface", h.config.Interface),
 		slog.String("ssid", h.config.SSID),
 		slog.String("hotspot_name", h.config.Name))
 
-	// Create hotspot connection using nmcli
+	// Create hotspot connection using nmcli with manual IP configuration
 	args := []string{
 		"connection", "add",
 		"type", "wifi",
@@ -175,7 +175,10 @@ func (h *hostAPDService) createHotspot() error {
 		"autoconnect", "yes",
 		"wifi.mode", "ap",
 		"wifi.ssid", h.config.SSID,
-		// "wifi.channel", fmt.Sprintf("%d", h.config.Channel),
+		// Let NetworkManager auto-select the best channel
+		// "wifi.band", "bg", // Optional: specify band if needed
+		// "wifi.channel", fmt.Sprintf("%d", h.config.Channel), // Auto-selected
+		// Use manual method with explicit IP configuration
 		"ipv4.method", "manual",
 		"ipv4.addresses", fmt.Sprintf("%s/24", h.config.Gateway),
 	}
@@ -239,8 +242,13 @@ func (h *hostAPDService) verifyInterfaceStatus(iFace string) error {
 func (h *hostAPDService) configureNetwork() error {
 	h.logger.Debug("configuring network firewall rules")
 
+	// Enable IP forwarding
+	if err := h.enableIPForwarding(); err != nil {
+		h.logger.Warn("failed to enable IP forwarding", slog.String("error", err.Error()))
+	}
+
 	// Apply UFW firewall rules
-	rules := GetRequiredFirewallRules(h.config.Interface)
+	rules := GetRequiredFirewallRules(h.config.Interface, h.config.PortalPort)
 	for _, rule := range rules {
 		if err := rule.Apply(h.config.Interface); err != nil {
 			h.logger.Warn("failed to apply firewall rule", slog.String("error", err.Error()))
@@ -248,7 +256,7 @@ func (h *hostAPDService) configureNetwork() error {
 	}
 
 	// Apply IPTables rules for captive portal
-	ipTablesRules := CreateIPTablesRules(h.config.Interface, h.config.Gateway)
+	ipTablesRules := CreateIPTablesRules(h.config.Interface, h.config.PortalPort)
 	for _, rule := range ipTablesRules {
 		if err := rule.Apply(); err != nil {
 			h.logger.Warn("failed to apply iptables rule", slog.String("error", err.Error()))
@@ -259,7 +267,13 @@ func (h *hostAPDService) configureNetwork() error {
 }
 
 func (h *hostAPDService) startDNSMasq() error {
-	h.logger.Debug("starting DNSMasq with captive portal configuration")
+	h.logger.Debug("starting DNSMasq with full DHCP and captive portal configuration")
+
+	// Stop any existing dnsmasq service
+	h.logger.Debug("stopping system dnsmasq service")
+	if err := exec.Command("sudo", "systemctl", "stop", "dnsmasq").Run(); err != nil {
+		h.logger.Warn("failed to stop system dnsmasq service", slog.String("error", err.Error()))
+	}
 
 	tmpl, err := template.ParseFS(templateFiles, "templates/dnsmasq.conf.tmpl")
 	if err != nil {
@@ -279,16 +293,19 @@ func (h *hostAPDService) startDNSMasq() error {
 	h.dnsmasqConfigPath = file.Name()
 	h.logger.Debug("generated dnsmasq config", slog.String("path", h.dnsmasqConfigPath))
 
-	// Start dnsmasq in background
-	h.dnsmasqCmd = exec.Command("dnsmasq", "-C", h.dnsmasqConfigPath, "--keep-in-foreground")
+	// Wait for interface to be fully ready
+	time.Sleep(3 * time.Second)
+
+	// Start dnsmasq with full DHCP and DNS functionality
+	h.dnsmasqCmd = exec.Command("sudo", "dnsmasq", "-C", h.dnsmasqConfigPath, "--keep-in-foreground")
 	if err := h.dnsmasqCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start dnsmasq: %w", err)
 	}
 
 	// Give dnsmasq a moment to start
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
-	h.logger.Info("DNSMasq started successfully with captive portal")
+	h.logger.Info("DNSMasq started with DHCP and captive portal DNS redirects")
 	return nil
 }
 
@@ -339,5 +356,33 @@ func (h *hostAPDService) stopDNSMasq() {
 			h.logger.Debug("removed dnsmasq config file", slog.String("path", h.dnsmasqConfigPath))
 		}
 		h.dnsmasqConfigPath = ""
+	}
+}
+
+func (h *hostAPDService) enableIPForwarding() error {
+	h.logger.Debug("enabling IP forwarding")
+
+	// Enable IP forwarding
+	if err := exec.Command("sudo", "sysctl", "-w", "net.ipv4.ip_forward=1").Run(); err != nil {
+		return errors.Wrap(err, "failed to enable IP forwarding")
+	}
+
+	// Make it persistent across reboots (optional, for temporary testing can be skipped)
+	if err := exec.Command("sudo", "sh", "-c", "echo 'net.ipv4.ip_forward=1' >> /etc/sysctl.conf").Run(); err != nil {
+		h.logger.Debug("failed to make IP forwarding persistent", slog.String("error", err.Error()))
+	}
+
+	return nil
+}
+
+func (h *hostAPDService) cleanupNetworkRules() {
+	h.logger.Debug("cleaning up network rules")
+
+	// Clean up IPTables rules
+	ipTablesRules := CleanupIPTablesRules(h.config.Interface, h.config.PortalPort)
+	for _, rule := range ipTablesRules {
+		if err := rule.Apply(); err != nil {
+			h.logger.Debug("failed to remove iptables rule (may not exist)", slog.String("error", err.Error()))
+		}
 	}
 }
