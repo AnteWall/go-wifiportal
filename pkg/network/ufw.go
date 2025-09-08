@@ -1,6 +1,11 @@
 package network
 
-import "os/exec"
+import (
+	"log/slog"
+	"os/exec"
+
+	"github.com/pkg/errors"
+)
 
 type FireWallDirection int
 
@@ -53,11 +58,17 @@ type FireWallRule struct {
 }
 
 func (p FireWallRule) ToArgs(iFace string) []string {
-	return []string{"allow", p.Direction.String(), "on", iFace, "to any", "port", p.Port, "proto", p.Protocol.ToString()}
+	return []string{"allow", p.Direction.String(), "on", iFace, "to", "any", "port", p.Port, "proto", p.Protocol.ToString()}
 }
 
 func (p FireWallRule) Apply(iFace string) error {
-	return exec.Command("ufw", p.ToArgs(iFace)...).Run()
+	slog.Debug("Applying firewall rule", slog.Any("rule", p.ToArgs(iFace)), slog.String("interface", iFace))
+	args := append([]string{"ufw"}, p.ToArgs(iFace)...)
+	o, err := exec.Command("sudo", args...).CombinedOutput()
+	if err != nil {
+		return errors.Wrap(err, string(o))
+	}
+	return nil
 }
 
 func GetRequiredFirewallRules(iFace string) []FireWallRule {

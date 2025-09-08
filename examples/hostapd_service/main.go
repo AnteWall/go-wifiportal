@@ -14,9 +14,7 @@ import (
 
 func main() {
 	// Set up logging
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})))
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 
 	// Find the best wireless interface for creating an access point
 	iFace, err := network.NewInterfaceManager().GetBestAPInterface()
@@ -34,10 +32,10 @@ func main() {
 	slog.Info("Using interface", slog.String("name", iFace.Name))
 
 	// Create NetworkManager-based hotspot service
-	h := network.NewHostAPDService()
+	h := network.NewAPService()
 	ctx := context.Background()
-	
-	// Configure the access point
+
+	// Configure the access point with WPA2 AES encryption
 	config := network.APConfig{
 		Name:        "go-wifiportal",
 		Interface:   iFace.Name,
@@ -45,7 +43,7 @@ func main() {
 		Password:    "12345678",
 		Channel:     6,
 		CountryCode: "SE",
-		Security:    "WPA2",
+		Security:    "wpa2",  // WPA2 with AES encryption
 		Gateway:     "192.168.4.1",
 		DHCPRange:   "192.168.4.2,192.168.4.50",
 	}
@@ -59,6 +57,7 @@ func main() {
 
 	slog.Info("WiFi hotspot started successfully!")
 	slog.Info("SSID: " + config.SSID)
+	slog.Info("Security: WPA2 with AES encryption")
 	slog.Info("Gateway: " + config.Gateway)
 	slog.Info("DHCP Range: " + config.DHCPRange)
 

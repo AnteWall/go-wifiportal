@@ -1,0 +1,71 @@
+---
+- name: Setup UFW and iptables without sudo for user
+  hosts: all
+  become: true
+  vars:
+    target_user: "{{ ansible_user }}"
+    
+  tasks:
+    - name: Install required packages
+      package:
+        name:
+          - ufw
+          - iptables
+          - iptables-persistent
+        state: present
+
+    - name: Check if iptables-legacy exists
+      stat:
+        path: /usr/sbin/iptables-legacy
+      register: iptables_legacy_check
+
+    - name: Configure sudo access for firewall commands without password
+      copy:
+        content: |
+          # Allow {{ target_user }} to run firewall commands without password
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/ufw
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/iptables
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/iptables-save
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/iptables-restore
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-save
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-restore
+          {% if iptables_legacy_check.stat.exists %}
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/iptables-legacy
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/iptables-legacy-save
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/iptables-legacy-restore
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-legacy
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-legacy-save
+          {{ target_user }} ALL=(ALL) NOPASSWD: /usr/sbin/ip6tables-legacy-restore
+          {% endif %}
+        dest: "/etc/sudoers.d/{{ target_user }}-firewall"
+        mode: '0440'
+        owner: root
+        group: root
+        validate: 'visudo -cf %s'
+
+    - name: Test UFW access without password
+      become: false
+      command: sudo ufw status
+      register: ufw_test
+      changed_when: false
+
+    - name: Test iptables access without password
+      become: false
+      command: sudo iptables -L -n
+      register: iptables_test
+      changed_when: false
+
+    - name: Test iptables-legacy access without password (if exists)
+      become: false
+      command: sudo iptables-legacy -L -n
+      register: iptables_legacy_test
+      changed_when: false
+      when: iptables_legacy_check.stat.exists
+
+    - name: Display test results
+      debug:
+        msg: 
+          - "UFW access test: {{ 'SUCCESS' if ufw_test.rc == 0 else 'FAILED' }}"
+          - "iptables access test: {{ 'SUCCESS' if iptables_test.rc == 0 else 'FAILED' }}"
+          - "iptables-legacy access test: {{ 'SUCCESS' if iptables_legacy_test.rc == 0 else 'NOT TESTED (legacy not found)' if not iptables_legacy_check.stat.exists else 'FAILED' }}"
