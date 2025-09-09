@@ -35,15 +35,14 @@ func main() {
 	h := network.NewAPService()
 	ctx := context.Background()
 
-	// Configure the access point with WPA2 AES encryption
+	// Configure the access point for WiFi setup portal
 	config := network.APConfig{
 		Name:        "go-wifiportal",
 		Interface:   iFace.Name,
 		SSID:        "GoWiFiPortal",
 		Password:    "12345678",
-		Channel:     6,
 		CountryCode: "SE",
-		Security:    "wpa2",  // WPA2 with AES encryption
+		Security:    "wpa2", // WPA2 with AES encryption
 		Gateway:     "192.168.4.1",
 		DHCPRange:   "192.168.4.2,192.168.4.50",
 	}

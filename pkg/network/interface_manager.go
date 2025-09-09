@@ -86,7 +86,7 @@ func (im *interfaceManager) supportsAPMode(i string) bool {
 		im.logger.Debug("interface does not support wifi", slog.String("interface", i))
 		return false
 	}
-	
+
 	// If nmcli can list wifi for this interface, it likely supports AP mode
 	// NetworkManager generally supports AP mode on most modern wifi interfaces
 	return true

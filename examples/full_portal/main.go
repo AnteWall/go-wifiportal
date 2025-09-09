@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -44,7 +43,6 @@ func main() {
 		Interface:   iFace.Name,
 		SSID:        "GoWiFiPortal",
 		Password:    "12345678",
-		Channel:     6, // Will be auto-selected
 		CountryCode: "SE",
 		Security:    "wpa2",
 		Gateway:     "192.168.4.1",
@@ -88,16 +86,16 @@ func main() {
 	slog.Info("Captive portal server started successfully!")
 
 	// Log the complete setup
-	slog.Info("=== WiFi Portal Setup Complete ===")
+	slog.Info("=== WiFi Setup Portal Active ===")
 	slog.Info("SSID: " + apConfig.SSID)
 	slog.Info("Password: " + apConfig.Password)
 	slog.Info("Security: WPA2 with AES encryption")
 	slog.Info("Gateway: " + apConfig.Gateway)
 	slog.Info("DHCP Range: " + apConfig.DHCPRange)
-	slog.Info("Portal URL: http://" + apConfig.Gateway + " (redirected to port " + fmt.Sprintf("%d", apConfig.PortalPort) + ")")
+	slog.Info("Portal URL: http://" + apConfig.Gateway + " (redirected to port " + apConfig.PortalPort + ")")
 	slog.Info("======================================")
-	slog.Info("Clients can now connect and will see the captive portal!")
-	slog.Info("HTTP traffic on port 80 is automatically redirected to the portal server")
+	slog.Info("Connect to WiFi and navigate to any website to configure device WiFi!")
+	slog.Info("All HTTP traffic is redirected to the configuration portal")
 
 	// Set up graceful shutdown
 	c := make(chan os.Signal, 1)

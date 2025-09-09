@@ -1,7 +1,6 @@
 package network
 
 import (
-	"log/slog"
 	"os/exec"
 
 	"github.com/pkg/errors"
@@ -62,7 +61,6 @@ func (p FireWallRule) ToArgs(iFace string) []string {
 }
 
 func (p FireWallRule) Apply(iFace string) error {
-	slog.Debug("Applying firewall rule", slog.Any("rule", p.ToArgs(iFace)), slog.String("interface", iFace))
 	args := append([]string{"ufw"}, p.ToArgs(iFace)...)
 	o, err := exec.Command("sudo", args...).CombinedOutput()
 	if err != nil {

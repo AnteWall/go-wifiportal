@@ -25,33 +25,9 @@ func (r IPTablesRule) Apply() error {
 	return nil
 }
 
-// getDefaultInterface returns the default network interface for internet access
-func getDefaultInterface() string {
-	cmd := exec.Command("ip", "route", "show", "default")
-	output, err := cmd.Output()
-	if err != nil {
-		slog.Warn("failed to get default interface", slog.String("error", err.Error()))
-		return "eth0" // fallback
-	}
-
-	// Parse "default via X.X.X.X dev ethX ..."
-	parts := strings.Fields(string(output))
-	for i, part := range parts {
-		if part == "dev" && i+1 < len(parts) {
-			return parts[i+1]
-		}
-	}
-	return "eth0" // fallback
-}
-
 func CreateIPTablesRules(iFace, portalPort string) []IPTablesRule {
-	defaultIface := getDefaultInterface()
-
 	return []IPTablesRule{
-		// Enable IP forwarding first
-		NewIPTablesRule("-P", "FORWARD", "ACCEPT"),
-
-		// Redirect all client HTTP traffic (80) to local portalPort
+		// Redirect all client HTTP traffic (80) to local portal server
 		NewIPTablesRule("-t", "nat", "-A", "PREROUTING",
 			"-i", iFace, "-p", "tcp", "--dport", "80",
 			"-j", "REDIRECT", "--to-ports", portalPort),
@@ -60,26 +36,17 @@ func CreateIPTablesRules(iFace, portalPort string) []IPTablesRule {
 		NewIPTablesRule("-A", "INPUT",
 			"-i", iFace, "-p", "tcp", "--dport", portalPort, "-j", "ACCEPT"),
 
-		// Allow DHCP traffic
+		// Allow DHCP and DNS traffic for local network
 		NewIPTablesRule("-A", "INPUT",
 			"-i", iFace, "-p", "udp", "--dport", "67", "-j", "ACCEPT"),
 		NewIPTablesRule("-A", "INPUT",
 			"-i", iFace, "-p", "udp", "--dport", "53", "-j", "ACCEPT"),
 		NewIPTablesRule("-A", "INPUT",
 			"-i", iFace, "-p", "tcp", "--dport", "53", "-j", "ACCEPT"),
-
-		// Let guest traffic be forwarded out
-		NewIPTablesRule("-A", "FORWARD", "-i", iFace, "-j", "ACCEPT"),
-		NewIPTablesRule("-A", "FORWARD", "-o", iFace, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"),
-
-		// NAT/masquerade for internet access
-		NewIPTablesRule("-t", "nat", "-A", "POSTROUTING", "-o", defaultIface, "-j", "MASQUERADE"),
 	}
 }
 
 func CleanupIPTablesRules(iFace, portalPort string) []IPTablesRule {
-	defaultIface := getDefaultInterface()
-
 	return []IPTablesRule{
 		NewIPTablesRule("-t", "nat", "-D", "PREROUTING",
 			"-i", iFace, "-p", "tcp", "--dport", "80",
@@ -94,10 +61,5 @@ func CleanupIPTablesRules(iFace, portalPort string) []IPTablesRule {
 			"-i", iFace, "-p", "udp", "--dport", "53", "-j", "ACCEPT"),
 		NewIPTablesRule("-D", "INPUT",
 			"-i", iFace, "-p", "tcp", "--dport", "53", "-j", "ACCEPT"),
-
-		NewIPTablesRule("-D", "FORWARD", "-i", iFace, "-j", "ACCEPT"),
-		NewIPTablesRule("-D", "FORWARD", "-o", iFace, "-m", "state", "--state", "RELATED,ESTABLISHED", "-j", "ACCEPT"),
-
-		NewIPTablesRule("-t", "nat", "-D", "POSTROUTING", "-o", defaultIface, "-j", "MASQUERADE"),
 	}
 }
