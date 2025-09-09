@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"strings"
 	"text/template"
-	"time"
 
 	"github.com/pkg/errors"
 )
@@ -236,7 +235,6 @@ func (h *hostAPDService) startDNSMasq() error {
 	}
 
 	h.dnsmasqConfigPath = file.Name()
-	time.Sleep(3 * time.Second)
 
 	h.dnsmasqCmd = exec.Command("sudo", "dnsmasq", "-C", h.dnsmasqConfigPath, "--keep-in-foreground")
 	if err := h.dnsmasqCmd.Start(); err != nil {

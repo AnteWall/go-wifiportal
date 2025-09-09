@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Status</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            background: #667eea;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+
+        .interface-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+        }
+
+        .interface-card.connected {
+            background: #e8f5e8;
+            border-color: #4caf50;
+        }
+
+        .interface-name {
+            font-weight: 600;
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .interface-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+        }
+
+        .detail-label {
+            font-weight: 500;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-up {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-down {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .ap-badge {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .no-ap-badge {
+            background: #f1f3f4;
+            color: #5f6368;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            margin-top: 10px;
+        }
+
+        .refresh-btn {
+            background: #28a745;
+            width: auto;
+            padding: 8px 16px;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="logo">📶</div>
+        <h1>WiFi Status</h1>
+        <p class="subtitle">Current network interface status</p>
+
+        <button type="button" class="btn refresh-btn" onclick="window.location.reload()">🔄 Refresh Status</button>
+
+        {{range .Interfaces}}
+        <div class="interface-card {{if .InUse}}connected{{end}}">
+            <div class="interface-name">{{.Name}}</div>
+            <div class="interface-details">
+                <div class="detail-item">
+                    <span class="detail-label">Status:</span>
+                    <span class="status-badge {{if .InUse}}status-up{{else}}status-down{{end}}">
+                        {{if .InUse}}Connected{{else}}Disconnected{{end}}
+                    </span>
+                </div>
+                <div class="detail-item">
+                    <span class="detail-label">Access Point:</span>
+                    <span class="status-badge {{if .SupportAP}}ap-badge{{else}}no-ap-badge{{end}}">
+                        {{if .SupportAP}}Supported{{else}}Not Supported{{end}}
+                    </span>
+                </div>
+                <div class="detail-item" style="grid-column: span 2;">
+                    <span class="detail-label">MAC Address:</span>
+                    <span>{{.MACAddress}}</span>
+                </div>
+            </div>
+        </div>
+        {{else}}
+        <div class="interface-card">
+            <div class="interface-name" style="color: #999;">No wireless interfaces found</div>
+        </div>
+        {{end}}
+
+        <a href="/setup" class="btn">🔧 WiFi Setup</a>
+        <a href="/api/status" class="btn btn-secondary">📊 JSON Status</a>
+    </div>
+</body>
+
+</html>

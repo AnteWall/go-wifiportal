@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Setup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #667eea;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px
+        }
+
+        .container {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 500px
+        }
+
+        .logo {
+            width: 60px;
+            height: 60px;
+            background: #667eea;
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #fff
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #fcc
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg)
+            }
+
+            100% {
+                transform: rotate(360deg)
+            }
+        }
+
+        .network-list {
+            margin-bottom: 20px
+        }
+
+        .network-item {
+            padding: 15px;
+            margin: 10px 0;
+            border: 2px solid #eee;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s
+        }
+
+        .network-item:hover {
+            border-color: #667eea;
+            background: #f8f9ff
+        }
+
+        .network-item.selected {
+            border-color: #667eea;
+            background: #e8ecff
+        }
+
+        .network-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px
+        }
+
+        .network-signal {
+            font-size: 12px;
+            color: #666
+        }
+
+        .password-section {
+            margin: 20px 0
+        }
+
+        .password-section input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px
+        }
+
+        .password-section input:focus {
+            outline: none;
+            border-color: #667eea
+        }
+
+        .connect-btn {
+            width: 100%;
+            padding: 15px;
+            background: #667eea;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s
+        }
+
+        .connect-btn:hover {
+            background: #5a6fd8
+        }
+
+        .connect-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: 500;
+            animation: fadeIn 0.3s ease-in
+        }
+
+        .status.success {
+            background: #dfd;
+            color: #060;
+            border: 1px solid #aea
+        }
+
+        .status.error {
+            background: #fee;
+            color: #c33;
+            border: 1px solid #fcc
+        }
+
+        .status.info {
+            background: #cce7ff;
+            color: #004085;
+            border: 1px solid #b3d7ff
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .hidden {
+            display: none
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="logo">📶</div>
+        <h1>WiFi Setup</h1>
+
+        {{if .Error}}
+        <div class="error">
+            {{if eq .Error "invalid_credentials"}}Invalid WiFi password. Please try again.
+            {{else if eq .Error "connection_failed"}}Failed to connect to network. Please check your credentials.
+            {{else if eq .Error "invalid_form"}}Invalid form data. Please try again.
+            {{else}}{{.Error}}{{end}}
+        </div>
+        {{end}}
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            Loading available networks...
+        </div>
+
+        <div id="main-content" class="hidden">
+            <div id="networks" class="network-list"></div>
+
+            <div id="password-section" class="password-section hidden">
+                <input type="password" id="password" placeholder="Enter WiFi password" />
+            </div>
+
+            <button id="connect-btn" class="connect-btn" disabled>
+                Connect to WiFi
+            </button>
+
+            <div id="status" class="status hidden"></div>
+        </div>
+    </div>
+
+    <script>
+        let selectedSSID = '';
+        let networks = [];
+
+        async function loadNetworks() {
+            try {
+                const response = await fetch('/api/networks');
+                if (!response.ok) throw new Error('Failed to load networks');
+
+                const data = await response.json();
+                if (data.status !== 'success') {
+                    throw new Error(data.error || 'Network scan failed');
+                }
+
+                networks = data.networks || [];
+                displayNetworks(networks);
+
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('main-content').classList.remove('hidden');
+            } catch (error) {
+                document.getElementById('loading').innerHTML =
+                    '<div class="error">Failed to load networks: ' + error.message + ' <button onclick="loadNetworks()">Retry</button></div>';
+            }
+        }
+
+        function displayNetworks(networks) {
+            const container = document.getElementById('networks');
+            container.innerHTML = '';
+
+            if (!networks || networks.length === 0) {
+                container.innerHTML = '<div class="error">No WiFi networks found. <button onclick="loadNetworks()">Scan Again</button></div>';
+                return;
+            }
+
+            networks.forEach(network => {
+                const div = document.createElement('div');
+                div.className = 'network-item';
+                div.onclick = (event) => selectNetwork(network, event);
+
+                div.innerHTML = `
+                    <div class="network-name">${network.display_name || network.ssid}</div>
+                `;
+
+                container.appendChild(div);
+            });
+        }
+
+        function selectNetwork(network, event) {
+            document.querySelectorAll('.network-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            event.target.closest('.network-item').classList.add('selected');
+            selectedSSID = network.ssid;
+
+            const passwordSection = document.getElementById('password-section');
+            const connectBtn = document.getElementById('connect-btn');
+            const passwordInput = document.getElementById('password');
+
+            if (network.security && network.security !== 'none') {
+                passwordSection.classList.remove('hidden');
+                connectBtn.disabled = true;
+                
+                setTimeout(() => passwordInput.focus(), 100);
+                
+                passwordInput.oninput = () => {
+                    connectBtn.disabled = passwordInput.value.length < 8;
+                };
+            } else {
+                passwordSection.classList.add('hidden');
+                connectBtn.disabled = false;
+            }
+        }
+
+        async function connectToNetwork() {
+            if (!selectedSSID) return;
+
+            const password = document.getElementById('password').value;
+            const status = document.getElementById('status');
+            const btn = document.getElementById('connect-btn');
+
+            btn.disabled = true;
+            btn.textContent = 'Connecting...';
+            status.className = 'status info';
+            status.textContent = `Attempting to connect to "${selectedSSID}"...`;
+            status.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ssid: selectedSSID, password })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    status.className = 'status success';
+                    status.textContent = `✅ Successfully connected to "${selectedSSID}"! The WiFi portal is shutting down...`;
+                    btn.textContent = 'Connected ✓';
+
+                    let countdown = 5;
+                    const countdownInterval = setInterval(() => {
+                        countdown--;
+                        if (countdown > 0) {
+                            status.textContent = `✅ Connected! This portal will disconnect in ${countdown} seconds...`;
+                        } else {
+                            status.textContent = '✅ Portal disconnected. You are now connected to the WiFi network.';
+                            clearInterval(countdownInterval);
+                        }
+                    }, 1000);
+                } else {
+                    throw new Error(result.error || 'Connection failed');
+                }
+            } catch (error) {
+                status.className = 'status error';
+                status.textContent = `❌ Failed to connect to "${selectedSSID}": ${error.message}`;
+                btn.disabled = false;
+                btn.textContent = 'Connect to WiFi';
+
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    status.textContent = '⚠️ Connection may have succeeded, but portal is no longer accessible. Check your internet connection.';
+                    btn.textContent = 'Portal Disconnected';
+                }
+            }
+        }
+
+        loadNetworks();
+
+        document.getElementById('connect-btn').addEventListener('click', function (e) {
+            if (!this.disabled) {
+                connectToNetwork();
+            }
+        });
+    </script>
+</body>
+
+</html>

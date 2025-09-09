@@ -50,12 +50,13 @@ func main() {
 		PortalPort:  "8080", // Portal runs on port 8080, traffic redirected from 80
 	}
 
-	// Configure the captive portal server
+	// Configure the WiFi setup portal server (captive portal mode)
 	portalConfig := portal.Config{
 		Port:        apConfig.PortalPort,      // Use the same port configured in AP
-		Gateway:     apConfig.Gateway,         // Same as AP gateway
+		Interface:   iFace.Name,               // WiFi interface to manage for internet connection
 		SSID:        apConfig.SSID,            // Same as AP SSID
-		RedirectURL: "https://www.google.com", // Where to redirect after login
+		Gateway:     apConfig.Gateway,         // Same as AP gateway
+		RedirectURL: "https://www.google.com", // Optional redirect after setup
 	}
 
 	// Create the portal server
